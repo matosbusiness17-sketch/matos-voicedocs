@@ -21,6 +21,11 @@ import {
   formatCurrency,
   CurrencyCode,
 } from "@/lib/calculations";
+import {
+  validateInvoiceForIssuance,
+  deriveDueDate,
+  isDemoSupplierData,
+} from "@/lib/issuanceValidation";
 
 export interface LineItemForm {
   id?: string;
@@ -109,6 +114,41 @@ export function InvoiceEditor({
     formData.spokenTotalCents,
     formData.currency
   );
+
+  const todayStr = formData.serviceDate || "2026-10-28";
+  const derivedDueDate = deriveDueDate(todayStr, formData.paymentTerms);
+  const isDemoSupplier = isDemoSupplierData({
+    name: formData.supplierName,
+    vatNumber: formData.supplierVatNumber,
+    iban: formData.supplierIban,
+    address: formData.supplierAddress,
+  });
+
+  const issuanceValidation = validateInvoiceForIssuance({
+    clientName: formData.clientName,
+    clientAddress: formData.clientAddress,
+    clientEmail: formData.clientEmail,
+    clientPhone: formData.clientPhone,
+    supplierName: formData.supplierName,
+    supplierAddress: formData.supplierAddress,
+    supplierEmail: formData.supplierEmail,
+    supplierPhone: formData.supplierPhone,
+    supplierVatNumber: formData.supplierVatNumber,
+    supplierBankName: formData.supplierBankName,
+    supplierIban: formData.supplierIban,
+    supplierBic: formData.supplierBic,
+    issueDate: todayStr,
+    serviceDate: formData.serviceDate,
+    dueDate: formData.dueDate,
+    paymentTerms: formData.paymentTerms,
+    currency: formData.currency,
+    isVatRegistered: formData.isVatRegistered,
+    vatRatePercent: formData.vatRatePercent,
+    isVatInclusive: formData.isVatInclusive,
+    spokenTotalCents: formData.spokenTotalCents,
+    items: itemsForCalc,
+    confirmDemoSupplier: true,
+  });
 
   // Line item handlers
   const handleItemChange = (
@@ -233,9 +273,11 @@ export function InvoiceEditor({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">
-                Billing Address
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-slate-400">
+                  Billing Address <span className="text-amber-400 font-semibold">* (Required for official issuance)</span>
+                </label>
+              </div>
               <textarea
                 rows={2}
                 value={formData.clientAddress}
@@ -243,8 +285,17 @@ export function InvoiceEditor({
                   setFormData({ ...formData, clientAddress: e.target.value })
                 }
                 placeholder="e.g. 100 Gotham Boulevard, Suite 400"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/60"
+                className={`w-full bg-slate-950 border rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none ${
+                  !formData.clientAddress.trim()
+                    ? "border-amber-500/50 focus:border-amber-400"
+                    : "border-slate-800 focus:border-emerald-500/60"
+                }`}
               />
+              {!formData.clientAddress.trim() && (
+                <p className="text-[11px] text-amber-400 mt-1">
+                  Customer billing address is mandatory before official issuance. Incomplete drafts may still be previewed.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -283,10 +334,23 @@ export function InvoiceEditor({
 
         {/* Supplier / Business Details */}
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl">
-          <div className="flex items-center gap-2 mb-4 text-emerald-400 font-semibold text-sm">
-            <Building className="w-4 h-4" />
-            <span>Supplier Information (Issuer)</span>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
+              <Building className="w-4 h-4" />
+              <span>Supplier Information (Issuer)</span>
+            </div>
+            {isDemoSupplier && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-500/15 text-orange-400 border border-orange-500/30">
+                SYNTHETIC DEMO DATA
+              </span>
+            )}
           </div>
+
+          {isDemoSupplier && (
+            <div className="mb-4 p-2.5 rounded-lg bg-orange-500/10 border border-orange-500/25 text-orange-300 text-[11px] leading-relaxed">
+              ⚠️ <strong>Demo Supplier Identity:</strong> Fictional company & banking details are active for prototype evaluation. Real production invoices require verified business credentials.
+            </div>
+          )}
 
           <div className="space-y-4">
             <div>
@@ -395,6 +459,11 @@ export function InvoiceEditor({
               placeholder="e.g. 14 days"
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500/60"
             />
+            {derivedDueDate && !formData.dueDate && (
+              <p className="text-[11px] text-emerald-400/90 mt-1">
+                Calculates due date: {derivedDueDate}
+              </p>
+            )}
           </div>
 
           <div>
@@ -412,17 +481,32 @@ export function InvoiceEditor({
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">
-              Payment Due Date
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-medium text-slate-400">
+                Payment Due Date
+              </label>
+            </div>
             <input
               type="date"
               value={formData.dueDate}
               onChange={(e) =>
                 setFormData({ ...formData, dueDate: e.target.value })
               }
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500/60"
+              className={`w-full bg-slate-950 border rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:outline-none ${
+                issuanceValidation.hasContradictoryDueDate
+                  ? "border-rose-500/60 focus:border-rose-400"
+                  : "border-slate-800 focus:border-emerald-500/60"
+              }`}
             />
+            {issuanceValidation.hasContradictoryDueDate ? (
+              <p className="text-[11px] text-rose-400 mt-1 font-semibold">
+                ⚠️ {issuanceValidation.contradictionMessage}
+              </p>
+            ) : !formData.dueDate && derivedDueDate ? (
+              <p className="text-[11px] text-cyan-400/90 mt-1">
+                Auto-derived at issuance: {derivedDueDate}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -593,7 +677,7 @@ export function InvoiceEditor({
         <div className="mt-6 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 pt-4 border-t border-slate-800">
           <div className="text-xs text-slate-400 space-y-1">
             <p>• Integer minor unit calculation eliminates floating-point rounding errors.</p>
-            <p>• Compliant with Maltese VAT Act and UK HMRC standard invoice specifications.</p>
+            <p>• Configurable VAT calculation (Malta 18% standard, UK 20%, reduced, and zero rates). Not certified as an official fiscal cash register or legal accounting compliance software.</p>
           </div>
 
           <div className="w-full sm:w-72 bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-sm">

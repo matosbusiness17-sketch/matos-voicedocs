@@ -31,7 +31,7 @@ test.describe("Matos VoiceDocs End-to-End Workflow", () => {
     await expect(page.getByText("Spoken Total Discrepancy Detected")).not.toBeVisible();
     await expect(previewBtn).toBeEnabled();
 
-    // 4. Click Preview PDF & Issue
+    // 4. Click Preview PDF & Issue (incomplete draft can still be previewed)
     await previewBtn.click();
     await expect(page.getByText("Step 3: Branded PDF & Document Snapshot")).toBeVisible();
     await expect(page.getByText("DRAFT INVOICE")).toBeVisible();
@@ -43,12 +43,38 @@ test.describe("Matos VoiceDocs End-to-End Workflow", () => {
     await expect(page.getByRole("button", { name: /Copy Email Text/i })).toBeVisible();
     await page.getByLabel("Close modal").click({ force: true });
 
-    // 6. Open Issue Confirmation Modal
+    // 6. Open Issue Confirmation Modal (initially blocked due to missing client billing address)
     await page.getByRole("button", { name: /Issue Official Invoice/i }).click();
-    await expect(page.getByText("Formal document approval & locking")).toBeVisible();
+    await expect(page.getByText("Issuance Blocked — Incomplete Details")).toBeVisible();
+    await expect(page.getByText(/Customer billing address is required/i)).toBeVisible();
+
+    // Return to editor to fill missing client address
+    await page.getByRole("button", { name: /Return to Editor to Fix Missing Fields/i }).click();
+    await expect(page.getByText("Step 2: AI Review & Deterministic Calculation")).toBeVisible();
+
+    // Fill in required billing address
+    await page.getByPlaceholder(/100 Gotham Boulevard/i).fill("100 Gotham Boulevard, Suite 400, Gotham City");
+
+    // Click Preview PDF & Issue again
+    await page.getByRole("button", { name: /Preview PDF & Issue/i }).click();
+    await expect(page.getByText("Step 3: Branded PDF & Document Snapshot")).toBeVisible();
+
+    // Open Issue Confirmation Modal again (now valid, but requires demo supplier acknowledgment)
+    await page.getByRole("button", { name: /Issue Official Invoice/i }).click();
+    await expect(page.getByRole("heading", { name: "Issue Official Invoice" })).toBeVisible();
+    await expect(page.getByText(/Payment Terms:/i).first()).toBeVisible();
+    await expect(page.getByText(/Calculated Due Date:/i)).toBeVisible();
+
+    // Confirm button is disabled before checking demo supplier acknowledgment
+    const confirmIssueBtn = page.getByRole("button", { name: /Confirm & Issue Official Invoice/i });
+    await expect(confirmIssueBtn).toBeDisabled();
+
+    // Check synthetic demo supplier acknowledgment
+    await page.getByRole("checkbox").check();
+    await expect(confirmIssueBtn).toBeEnabled();
 
     // Confirm Issuance
-    await page.getByRole("button", { name: /Confirm & Issue Invoice/i }).click();
+    await confirmIssueBtn.click();
 
     // Verify official issued state with SHA-256 integrity digest
     await expect(page.getByText("Officially Issued")).toBeVisible({ timeout: 10000 });

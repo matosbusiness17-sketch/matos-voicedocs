@@ -38,6 +38,7 @@ export interface InvoicePdfData {
   totalCents: number;
   integrityHash?: string | null;
   issuedAt?: string | null;
+  isDemoSupplier?: boolean;
 
   items: Array<{
     description: string;
@@ -108,6 +109,18 @@ export function generateInvoicePdf(data: InvoicePdfData): jsPDF {
     doc.roundedRect(pageWidth - margin - 42, currentY + 7, 34, 14, 2, 2, "F");
     doc.setTextColor(255, 255, 255);
     doc.text("ISSUED", pageWidth - margin - 25, currentY + 16, { align: "center" });
+  }
+
+  // Demo Dataset Banner if synthetic supplier details used
+  if (data.isDemoSupplier) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(234, 88, 12); // orange-600
+    doc.text(
+      "[PROTOTYPE DEMONSTRATION — SYNTHETIC SUPPLIER DETAILS]",
+      margin + 8,
+      currentY + 24
+    );
   }
 
   currentY += 34;
@@ -300,7 +313,6 @@ export function generateInvoicePdf(data: InvoicePdfData): jsPDF {
   );
 
   // 7. Payment Details (Left Box)
-  const payBoxWidth = colWidth + 5;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42);
@@ -370,7 +382,7 @@ export function generateInvoicePdf(data: InvoicePdfData): jsPDF {
   }
 
   doc.text(
-    "Matos VoiceDocs • Commercial Invoice Engine",
+    "Matos VoiceDocs • Drafting Prototype (Not a Fiscal Cash Register)",
     pageWidth - margin,
     footerY,
     { align: "right" }

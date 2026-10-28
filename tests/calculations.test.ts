@@ -3,8 +3,6 @@ import {
   calculateInvoiceTotals,
   checkSpokenDiscrepancy,
   formatCurrency,
-  parseToCents,
-  roundToCents,
 } from "@/lib/calculations";
 
 describe("Deterministic Financial Calculations Engine", () => {

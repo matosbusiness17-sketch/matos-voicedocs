@@ -19,15 +19,15 @@ export const invoices = pgTable("invoices", {
   isVatInclusive: boolean("is_vat_inclusive").default(false).notNull(),
   vatExemptReason: text("vat_exempt_reason"),
 
-  // Supplier
-  supplierName: text("supplier_name").default("Matos Technical Solutions Ltd").notNull(),
-  supplierAddress: text("supplier_address").default("Tower Business Centre, Swatar, BKR 4013, Malta"),
-  supplierEmail: text("supplier_email").default("invoicing@matos-solutions.com"),
-  supplierPhone: text("supplier_phone").default("+356 2134 5678"),
-  supplierVatNumber: text("supplier_vat_number").default("MT 2458-9912"),
-  supplierBankName: text("supplier_bank_name").default("Bank of Valletta"),
-  supplierIban: text("supplier_iban").default("MT84BOVS0000000001234567890"),
-  supplierBic: text("supplier_bic").default("BOVSMTM3"),
+  // Supplier (Identified as synthetic demonstration data)
+  supplierName: text("supplier_name").default("[DEMO] Matos Technical Solutions Ltd (Sample Business)").notNull(),
+  supplierAddress: text("supplier_address").default("Sample Business Address, Tower Business Centre, Swatar, Malta [DEMO]"),
+  supplierEmail: text("supplier_email").default("demo-invoicing@matos-solutions.sample"),
+  supplierPhone: text("supplier_phone").default("+356 0000 0000 [DEMO]"),
+  supplierVatNumber: text("supplier_vat_number").default("MT 0000-0000 [DEMO]"),
+  supplierBankName: text("supplier_bank_name").default("Sample Bank of Valletta [DEMO]"),
+  supplierIban: text("supplier_iban").default("MT00DEMO0000000000000000000"),
+  supplierBic: text("supplier_bic").default("DEMOMTM3"),
 
   // Client
   clientName: text("client_name").default("").notNull(),

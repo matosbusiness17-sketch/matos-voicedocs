@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { invoices, invoiceItems, issuedSnapshots } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { checkSpokenDiscrepancy } from "@/lib/calculations";
 import { computeSnapshotIntegrityHash } from "@/lib/integrity";
+import { validateInvoiceForIssuance } from "@/lib/issuanceValidation";
 
 export async function POST(
   req: NextRequest,
@@ -12,7 +12,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
-    const { confirmedByUserId } = body;
+    const { confirmedByUserId, confirmDemoSupplier } = body;
 
     // Fetch existing invoice
     const invoice = await db.query.invoices.findFirst({
@@ -41,52 +41,69 @@ export async function POST(
       );
     }
 
-    // MANDATORY REQUIREMENT (Test B):
-    // "If a spoken total does not match the calculated sum, flag the discrepancy and prevent issuance until the user resolves it."
-    const discrepancy = checkSpokenDiscrepancy(
-      invoice.totalCents,
-      invoice.spokenTotalCents,
-      invoice.currency as "EUR" | "GBP"
-    );
+    const issueDateStr = new Date().toISOString().split("T")[0];
 
-    if (discrepancy.hasDiscrepancy) {
+    // Centralized issuance validation (Requirement 1 & 2 & 3)
+    const validation = validateInvoiceForIssuance({
+      clientName: invoice.clientName,
+      clientAddress: invoice.clientAddress,
+      clientEmail: invoice.clientEmail,
+      clientPhone: invoice.clientPhone,
+      supplierName: invoice.supplierName,
+      supplierAddress: invoice.supplierAddress,
+      supplierEmail: invoice.supplierEmail,
+      supplierPhone: invoice.supplierPhone,
+      supplierVatNumber: invoice.supplierVatNumber,
+      supplierBankName: invoice.supplierBankName,
+      supplierIban: invoice.supplierIban,
+      supplierBic: invoice.supplierBic,
+      issueDate: issueDateStr,
+      serviceDate: invoice.serviceDate,
+      dueDate: invoice.dueDate,
+      paymentTerms: invoice.paymentTerms,
+      currency: invoice.currency,
+      isVatRegistered: invoice.isVatRegistered,
+      vatRatePercent: invoice.vatRatePercent,
+      isVatInclusive: invoice.isVatInclusive,
+      spokenTotalCents: invoice.spokenTotalCents,
+      items: invoice.items.map((it) => ({
+        description: it.description,
+        quantity: it.quantity,
+        unitPriceCents: it.unitPriceCents,
+        totalCents: it.totalCents,
+      })),
+      confirmDemoSupplier: !!confirmDemoSupplier,
+    });
+
+    if (!validation.isValid) {
+      const errorSummary = validation.errors.map((e) => e.message).join(" ");
       return NextResponse.json(
         {
           success: false,
-          error: `Issuance blocked: ${discrepancy.message}. Please edit line items or clear the discrepancy before issuing.`,
-          discrepancy,
+          error: `Issuance validation failed: ${errorSummary}`,
+          validationErrors: validation.errors,
+          isDemoSupplier: validation.isDemoSupplier,
         },
         { status: 422 }
       );
     }
 
-    if (!invoice.clientName || invoice.clientName.trim() === "") {
-      return NextResponse.json(
-        { success: false, error: "Issuance blocked: Client name is required." },
-        { status: 422 }
-      );
-    }
-
-    if (!invoice.items || invoice.items.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "Issuance blocked: Invoice must have at least one line item." },
-        { status: 422 }
-      );
-    }
-
-    // Generate formal invoice number if not already assigned
+    // Generate formal sequential invoice number if not already assigned
     const currentYear = new Date().getFullYear();
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(issuedSnapshots);
-    
+
     const nextNumber = count + 1;
     const assignedInvoiceNumber =
       invoice.invoiceNumber && invoice.invoiceNumber.trim() !== ""
         ? invoice.invoiceNumber
         : `INV-${currentYear}-${String(nextNumber).padStart(4, "0")}`;
 
-    const issueDateStr = new Date().toISOString().split("T")[0];
+    // Use derived due date (e.g. 14 days from issueDate) if explicit due date was empty
+    const resolvedDueDate = invoice.dueDate && invoice.dueDate.trim() !== ""
+      ? invoice.dueDate.trim()
+      : validation.derivedDueDate;
 
     // Build complete frozen snapshot
     const snapshotData = {
@@ -94,7 +111,7 @@ export async function POST(
       invoiceNumber: assignedInvoiceNumber,
       issueDate: issueDateStr,
       serviceDate: invoice.serviceDate,
-      dueDate: invoice.dueDate,
+      dueDate: resolvedDueDate,
       paymentTerms: invoice.paymentTerms,
       currency: invoice.currency,
       isVatRegistered: invoice.isVatRegistered,
@@ -110,6 +127,7 @@ export async function POST(
         bankName: invoice.supplierBankName,
         iban: invoice.supplierIban,
         bic: invoice.supplierBic,
+        isSyntheticDemoData: validation.isDemoSupplier,
       },
       client: {
         name: invoice.clientName,
@@ -131,6 +149,7 @@ export async function POST(
       rawTranscript: invoice.rawTranscript,
       issuedAt: new Date().toISOString(),
       confirmedByUser: confirmedByUserId || "authorized_user",
+      isSyntheticDemoDocument: validation.isDemoSupplier,
     };
 
     // Calculate SHA-256 integrity hash
@@ -147,13 +166,14 @@ export async function POST(
       })
       .returning();
 
-    // Mark invoice as issued with hash
+    // Mark invoice as issued with hash and derived due date
     const [updatedInvoice] = await db
       .update(invoices)
       .set({
         status: "issued",
         invoiceNumber: assignedInvoiceNumber,
         issueDate: issueDateStr,
+        dueDate: resolvedDueDate,
         integrityHash,
         issuedAt: new Date(),
         updatedAt: new Date(),
@@ -170,6 +190,7 @@ export async function POST(
       },
       snapshot: snapshotRecord,
       integrityHash,
+      isDemoSupplier: validation.isDemoSupplier,
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);

@@ -8,15 +8,10 @@ import {
   ArrowLeft,
   Lock,
   FileCheck,
-  AlertTriangle,
-  Building,
-  User,
-  Calendar,
-  CreditCard,
-  Hash,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/calculations";
 import { generateInvoicePdf, InvoicePdfData } from "@/lib/pdfGenerator";
+import { deriveDueDate, isDemoSupplierData } from "@/lib/issuanceValidation";
 import { InvoiceFormData } from "./InvoiceEditor";
 
 interface InvoicePreviewProps {
@@ -71,12 +66,25 @@ export function InvoicePreview({
     }
   }
 
+  const todayStr = invoiceData.serviceDate || "2026-10-28";
+  const derivedDueDate = deriveDueDate(todayStr, invoiceData.paymentTerms);
+  const resolvedDueDate = invoiceData.dueDate && invoiceData.dueDate.trim() !== ""
+    ? invoiceData.dueDate.trim()
+    : derivedDueDate;
+
+  const isDemoSupplier = isDemoSupplierData({
+    name: invoiceData.supplierName,
+    vatNumber: invoiceData.supplierVatNumber,
+    iban: invoiceData.supplierIban,
+    address: invoiceData.supplierAddress,
+  });
+
   const pdfPayload: InvoicePdfData = {
     invoiceNumber: assignedInvoiceNumber || invoiceData.invoiceNumber || "DRAFT-PREVIEW",
     status: isIssued ? "issued" : "draft",
-    issueDate: invoiceData.serviceDate || new Date().toISOString().split("T")[0],
+    issueDate: invoiceData.serviceDate || todayStr,
     serviceDate: invoiceData.serviceDate,
-    dueDate: invoiceData.dueDate,
+    dueDate: resolvedDueDate,
     paymentTerms: invoiceData.paymentTerms,
     currency: invoiceData.currency,
     isVatRegistered: invoiceData.isVatRegistered,
@@ -100,6 +108,7 @@ export function InvoicePreview({
     vatAmountCents,
     totalCents,
     integrityHash: integrityHash || null,
+    isDemoSupplier,
     items: itemsForPdf,
   };
 
@@ -201,6 +210,14 @@ export function InvoicePreview({
           </div>
         )}
 
+        {/* Demo Supplier Notice Banner */}
+        {isDemoSupplier && (
+          <div className="relative z-10 mb-6 p-2.5 rounded-lg bg-orange-50 border border-orange-200 text-orange-800 text-[11px] font-medium flex items-center justify-between">
+            <span>⚠️ <strong>PROTOTYPE DEMONSTRATION:</strong> Document features synthetic demonstration supplier identity.</span>
+            <span className="font-bold text-[10px] uppercase tracking-wider bg-orange-200 text-orange-900 px-2 py-0.5 rounded">DEMO CONTEXT</span>
+          </div>
+        )}
+
         {/* Invoice Header */}
         <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start gap-6 border-b border-slate-200 pb-8">
           <div>
@@ -230,7 +247,7 @@ export function InvoicePreview({
               {assignedInvoiceNumber || invoiceData.invoiceNumber || "DRAFT-PREVIEW"}
             </p>
             <p className="text-xs text-slate-500 mt-1">
-              Date: {invoiceData.serviceDate || new Date().toISOString().split("T")[0]}
+              Date: {invoiceData.serviceDate || todayStr}
             </p>
           </div>
         </div>
@@ -266,12 +283,12 @@ export function InvoicePreview({
             )}
             {invoiceData.paymentTerms && (
               <p className="text-slate-600 mt-2 font-medium">
-                Terms: <span className="text-slate-900">{invoiceData.paymentTerms}</span>
+                Payment Terms: <span className="text-slate-900 font-semibold">{invoiceData.paymentTerms}</span>
               </p>
             )}
-            {invoiceData.dueDate && (
+            {resolvedDueDate && (
               <p className="text-slate-600 mt-0.5 font-medium">
-                Due Date: <span className="text-slate-900">{invoiceData.dueDate}</span>
+                Payment Due Date: <span className="text-slate-900 font-mono font-semibold">{resolvedDueDate}</span>
               </p>
             )}
           </div>

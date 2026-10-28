@@ -11,6 +11,10 @@ import { InvoiceHistoryModal } from "@/components/InvoiceHistoryModal";
 import { Sparkles, RefreshCw, AlertCircle, Shield, CheckCircle2 } from "lucide-react";
 import { ExtractedInvoice } from "@/lib/extractionSchema";
 import { calculateInvoiceTotals } from "@/lib/calculations";
+import {
+  validateInvoiceForIssuance,
+  deriveDueDate,
+} from "@/lib/issuanceValidation";
 
 const DEFAULT_INVOICE_DATA: InvoiceFormData = {
   status: "draft",
@@ -18,15 +22,15 @@ const DEFAULT_INVOICE_DATA: InvoiceFormData = {
   clientAddress: "",
   clientEmail: "",
   clientPhone: "",
-  supplierName: "Matos Technical Solutions Ltd",
-  supplierAddress: "Tower Business Centre, Swatar, BKR 4013, Malta",
-  supplierEmail: "invoicing@matos-solutions.com",
-  supplierPhone: "+356 2134 5678",
-  supplierVatNumber: "MT 2458-9912",
-  supplierBankName: "Bank of Valletta",
-  supplierIban: "MT84BOVS0000000001234567890",
-  supplierBic: "BOVSMTM3",
-  serviceDate: new Date().toISOString().split("T")[0],
+  supplierName: "[DEMO] Matos Technical Solutions Ltd (Sample Business)",
+  supplierAddress: "Sample Business Address, Tower Business Centre, Swatar, Malta [DEMO]",
+  supplierEmail: "demo-invoicing@matos-solutions.sample",
+  supplierPhone: "+356 0000 0000 [DEMO]",
+  supplierVatNumber: "MT 0000-0000 [DEMO]",
+  supplierBankName: "Sample Bank of Valletta [DEMO]",
+  supplierIban: "MT00DEMO0000000000000000000",
+  supplierBic: "DEMOMTM3",
+  serviceDate: "",
   dueDate: "",
   paymentTerms: "14 days",
   currency: "EUR",
@@ -69,9 +73,17 @@ export default function VoiceDocsPage() {
   // Issuance state
   const [assignedInvoiceNumber, setAssignedInvoiceNumber] = useState<string | null>(null);
   const [integrityHash, setIntegrityHash] = useState<string | null>(null);
+  const [todayStr, setTodayStr] = useState("2026-10-28");
 
-  // Fetch count of invoices on mount
+  // Fetch count of invoices and initialize client date on mount
   useEffect(() => {
+    const today = new Date().toISOString().split("T")[0];
+    setTodayStr(today);
+    setInvoiceData((prev) => ({
+      ...prev,
+      serviceDate: prev.serviceDate || today,
+    }));
+
     fetch("/api/invoices")
       .then((r) => r.json())
       .then((data) => {
@@ -245,7 +257,7 @@ export default function VoiceDocsPage() {
   };
 
   // Issue Official Invoice
-  const handleConfirmIssue = async () => {
+  const handleConfirmIssue = async (confirmDemoSupplier: boolean = false) => {
     if (!invoiceData.id) {
       // Must save first to acquire DB record id
       try {
@@ -263,7 +275,10 @@ export default function VoiceDocsPage() {
       const res = await fetch(`/api/invoices/${invoiceData.id}/issue`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmedByUserId: "matos_operator" }),
+        body: JSON.stringify({
+          confirmedByUserId: "matos_operator",
+          confirmDemoSupplier,
+        }),
       });
 
       const data = await res.json();
@@ -314,6 +329,37 @@ export default function VoiceDocsPage() {
       isVatInclusive: invoiceData.isVatInclusive,
     }
   );
+
+  const derivedDueDate = deriveDueDate(todayStr, invoiceData.paymentTerms);
+  const issuanceValidation = validateInvoiceForIssuance({
+    clientName: invoiceData.clientName,
+    clientAddress: invoiceData.clientAddress,
+    clientEmail: invoiceData.clientEmail,
+    clientPhone: invoiceData.clientPhone,
+    supplierName: invoiceData.supplierName,
+    supplierAddress: invoiceData.supplierAddress,
+    supplierEmail: invoiceData.supplierEmail,
+    supplierPhone: invoiceData.supplierPhone,
+    supplierVatNumber: invoiceData.supplierVatNumber,
+    supplierBankName: invoiceData.supplierBankName,
+    supplierIban: invoiceData.supplierIban,
+    supplierBic: invoiceData.supplierBic,
+    issueDate: todayStr,
+    serviceDate: invoiceData.serviceDate,
+    dueDate: invoiceData.dueDate,
+    paymentTerms: invoiceData.paymentTerms,
+    currency: invoiceData.currency,
+    isVatRegistered: invoiceData.isVatRegistered,
+    vatRatePercent: invoiceData.vatRatePercent,
+    isVatInclusive: invoiceData.isVatInclusive,
+    spokenTotalCents: invoiceData.spokenTotalCents,
+    items: invoiceData.items.map((it) => ({
+      description: it.description,
+      quantity: it.quantity,
+      unitPriceCents: Math.round((parseFloat(it.unitPriceMajor) || 0) * 100),
+    })),
+    confirmDemoSupplier: true,
+  });
 
   return (
     <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
@@ -469,7 +515,7 @@ export default function VoiceDocsPage() {
             <span>Commercial Prototype for Matos Systems</span>
           </div>
           <div className="text-[11px] text-slate-600">
-            Compliant with Maltese VAT Act • SHA-256 Snapshot Integrity Audit
+            Configurable VAT Engine • Internal SHA-256 Snapshot Integrity Audit • Prototype Only
           </div>
         </div>
       </footer>
@@ -483,6 +529,10 @@ export default function VoiceDocsPage() {
         clientName={invoiceData.clientName || "Customer"}
         totalCents={totalsForModals.totalCents}
         currency={invoiceData.currency}
+        paymentTerms={invoiceData.paymentTerms}
+        derivedDueDate={invoiceData.dueDate || derivedDueDate}
+        validation={issuanceValidation}
+        onReturnToEdit={() => setCurrentStep("edit")}
       />
 
       <EmailHandoffModal

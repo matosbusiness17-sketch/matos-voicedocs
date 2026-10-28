@@ -5,14 +5,12 @@ import {
   History,
   X,
   FileText,
-  Lock,
   Trash2,
-  ExternalLink,
   RefreshCw,
   Download,
   AlertCircle,
 } from "lucide-react";
-import { formatCurrency, CurrencyCode } from "@/lib/calculations";
+import { formatCurrency } from "@/lib/calculations";
 import { generateInvoicePdf, InvoicePdfData } from "@/lib/pdfGenerator";
 import { InvoiceFormData } from "./InvoiceEditor";
 
