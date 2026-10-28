@@ -1,0 +1,22 @@
+services:
+  matos_voicedocs_postgres:
+    image: postgres:16-alpine
+    container_name: matos-voicedocs-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_secure_password
+      POSTGRES_DB: matos_voicedocs
+    ports:
+      - "5434:5432"
+    volumes:
+      - matos_voicedocs_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d matos_voicedocs"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  matos_voicedocs_pgdata:
+    name: matos_voicedocs_pgdata
