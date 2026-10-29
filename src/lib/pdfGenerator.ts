@@ -11,7 +11,7 @@ export interface InvoicePdfData {
   dueDate?: string | null;
   paymentTerms?: string | null;
   currency: "EUR" | "GBP";
-  
+
   isVatRegistered: boolean;
   vatRatePercent: number | string;
   isVatInclusive: boolean;
@@ -49,7 +49,23 @@ export interface InvoicePdfData {
 }
 
 /**
- * Generates a branded, publication-ready vector PDF invoice.
+ * Draws diagonal background watermark for draft invoices.
+ */
+function drawDraftWatermark(doc: jsPDF, pageWidth: number, pageHeight: number) {
+  doc.saveGraphicsState();
+  doc.setTextColor(238, 242, 246);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(54);
+  doc.text("DRAFT INVOICE", pageWidth / 2, pageHeight / 2, {
+    align: "center",
+    angle: 45,
+  });
+  doc.restoreGraphicsState();
+}
+
+/**
+ * Generates a branded, publication-ready vector PDF invoice with collision-free,
+ * dynamically wrapped columns and structured multi-line footer.
  */
 export function generateInvoicePdf(data: InvoicePdfData): jsPDF {
   const doc = new jsPDF({
@@ -66,49 +82,39 @@ export function generateInvoicePdf(data: InvoicePdfData): jsPDF {
   const isDraft = data.status === "draft";
   const currency = data.currency || "EUR";
 
-  // 1. Watermark if DRAFT
+  // 1. Watermark if DRAFT on Page 1
   if (isDraft) {
-    doc.saveGraphicsState();
-    doc.setTextColor(220, 225, 232);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(54);
-    // Draw diagonal text in background
-    doc.text("DRAFT INVOICE", pageWidth / 2, pageHeight / 2, {
-      align: "center",
-      angle: 45,
-    });
-    doc.restoreGraphicsState();
+    drawDraftWatermark(doc, pageWidth, pageHeight);
   }
 
-  // 2. Header Branding
-  // Slate/Navy header block
+  // 2. Header Branding Block
   doc.setFillColor(15, 23, 42); // slate-900
   doc.rect(margin, currentY, pageWidth - margin * 2, 28, "F");
 
-  // Matos Systems Logo Mark & Title
+  // Logo Mark & Engine Title
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
+  doc.setFontSize(15);
   doc.text("MATOS SYSTEMS", margin + 8, currentY + 11);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(148, 163, 184); // slate-400
   doc.text("VOICEDOCS INVOICING ENGINE", margin + 8, currentY + 18);
 
   // Status Badge in Header
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   if (isDraft) {
     doc.setFillColor(234, 179, 8); // amber-500
-    doc.roundedRect(pageWidth - margin - 42, currentY + 7, 34, 14, 2, 2, "F");
+    doc.roundedRect(pageWidth - margin - 40, currentY + 7, 32, 14, 2, 2, "F");
     doc.setTextColor(15, 23, 42);
-    doc.text("DRAFT", pageWidth - margin - 25, currentY + 16, { align: "center" });
+    doc.text("DRAFT", pageWidth - margin - 24, currentY + 16, { align: "center" });
   } else {
     doc.setFillColor(16, 185, 129); // emerald-500
-    doc.roundedRect(pageWidth - margin - 42, currentY + 7, 34, 14, 2, 2, "F");
+    doc.roundedRect(pageWidth - margin - 40, currentY + 7, 32, 14, 2, 2, "F");
     doc.setTextColor(255, 255, 255);
-    doc.text("ISSUED", pageWidth - margin - 25, currentY + 16, { align: "center" });
+    doc.text("ISSUED", pageWidth - margin - 24, currentY + 16, { align: "center" });
   }
 
   // Demo Dataset Banner if synthetic supplier details used
@@ -127,98 +133,132 @@ export function generateInvoicePdf(data: InvoicePdfData): jsPDF {
 
   // 3. Invoice Number & Date Bar
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
+  doc.setFontSize(13);
   doc.setTextColor(15, 23, 42);
   const invNumberText = data.invoiceNumber || "DRAFT-PREVIEW";
   doc.text(`INVOICE: ${invNumberText}`, margin, currentY);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(100, 116, 139);
-  const dateText = data.issueDate ? `Issue Date: ${data.issueDate}` : `Draft Date: ${new Date().toISOString().split("T")[0]}`;
+  const dateText = data.issueDate
+    ? `Issue Date: ${data.issueDate}`
+    : `Draft Date: ${data.serviceDate || "2026-10-28"}`;
   doc.text(dateText, pageWidth - margin, currentY, { align: "right" });
 
-  currentY += 8;
+  currentY += 6;
   doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.5);
+  doc.setLineWidth(0.4);
   doc.line(margin, currentY, pageWidth - margin, currentY);
   currentY += 7;
 
-  // 4. Supplier & Client Columns
-  const colWidth = (pageWidth - margin * 2 - 10) / 2;
+  // 4. Supplier & Client Columns (Properly bounded and dynamically wrapped)
+  const contentWidth = pageWidth - margin * 2;
+  const colGap = 10;
+  const colWidth = (contentWidth - colGap) / 2; // Exactly 82mm
   const leftX = margin;
-  const rightX = margin + colWidth + 10;
+  const rightX = margin + colWidth + colGap; // 110mm
 
-  // Supplier
+  // --- Left Column: Supplier ---
+  let supplierY = currentY;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(71, 85, 105);
-  doc.text("FROM (SUPPLIER)", leftX, currentY);
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text("FROM (SUPPLIER)", leftX, supplierY);
+  supplierY += 4.5;
 
+  // Supplier Name (Strictly wrapped to colWidth)
+  const supplierName = data.supplierName || "Matos Technical Solutions Ltd";
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(data.supplierName || "Matos Technical Solutions Ltd", leftX, currentY + 5);
+  const splitSupplierName = doc.splitTextToSize(supplierName, colWidth);
+  doc.text(splitSupplierName, leftX, supplierY);
+  supplierY += splitSupplierName.length * 4.2 + 1;
 
+  // Supplier Address & Contact (Strictly wrapped to colWidth)
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
-  let supplierY = currentY + 10;
-  if (data.supplierAddress) {
+
+  if (data.supplierAddress && data.supplierAddress.trim() !== "") {
     const splitAddr = doc.splitTextToSize(data.supplierAddress, colWidth);
     doc.text(splitAddr, leftX, supplierY);
-    supplierY += splitAddr.length * 4;
+    supplierY += splitAddr.length * 3.8 + 1;
   }
   if (data.supplierVatNumber) {
-    doc.text(`VAT ID: ${data.supplierVatNumber}`, leftX, supplierY);
-    supplierY += 4;
+    const splitVat = doc.splitTextToSize(`VAT ID: ${data.supplierVatNumber}`, colWidth);
+    doc.text(splitVat, leftX, supplierY);
+    supplierY += splitVat.length * 3.8 + 0.5;
   }
   if (data.supplierEmail) {
-    doc.text(`Email: ${data.supplierEmail}`, leftX, supplierY);
-    supplierY += 4;
+    const splitEmail = doc.splitTextToSize(`Email: ${data.supplierEmail}`, colWidth);
+    doc.text(splitEmail, leftX, supplierY);
+    supplierY += splitEmail.length * 3.8 + 0.5;
+  }
+  if (data.supplierPhone) {
+    const splitPhone = doc.splitTextToSize(`Phone: ${data.supplierPhone}`, colWidth);
+    doc.text(splitPhone, leftX, supplierY);
+    supplierY += splitPhone.length * 3.8 + 0.5;
   }
 
-  // Client
+  // --- Right Column: Client ---
+  let clientY = currentY;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(71, 85, 105);
-  doc.text("BILL TO (CLIENT)", rightX, currentY);
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text("BILL TO (CLIENT)", rightX, clientY);
+  clientY += 4.5;
 
+  // Client Name (Strictly wrapped to colWidth)
+  const clientName = data.clientName || "[Client Name Required]";
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(data.clientName || "[Client Name Required]", rightX, currentY + 5);
+  const splitClientName = doc.splitTextToSize(clientName, colWidth);
+  doc.text(splitClientName, rightX, clientY);
+  clientY += splitClientName.length * 4.2 + 1;
 
+  // Client Address & Metadata (Strictly wrapped to colWidth)
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
-  let clientY = currentY + 10;
-  if (data.clientAddress) {
+
+  if (data.clientAddress && data.clientAddress.trim() !== "") {
     const splitAddr = doc.splitTextToSize(data.clientAddress, colWidth);
     doc.text(splitAddr, rightX, clientY);
-    clientY += splitAddr.length * 4;
+    clientY += splitAddr.length * 3.8 + 1;
   } else {
     doc.setTextColor(156, 163, 175);
     doc.text("(Address not provided)", rightX, clientY);
-    clientY += 4;
+    clientY += 4.5;
     doc.setTextColor(71, 85, 105);
   }
   if (data.clientEmail) {
-    doc.text(`Email: ${data.clientEmail}`, rightX, clientY);
-    clientY += 4;
+    const splitEmail = doc.splitTextToSize(`Email: ${data.clientEmail}`, colWidth);
+    doc.text(splitEmail, rightX, clientY);
+    clientY += splitEmail.length * 3.8 + 0.5;
+  }
+  if (data.clientPhone) {
+    const splitPhone = doc.splitTextToSize(`Phone: ${data.clientPhone}`, colWidth);
+    doc.text(splitPhone, rightX, clientY);
+    clientY += splitPhone.length * 3.8 + 0.5;
   }
   if (data.paymentTerms) {
-    doc.text(`Payment Terms: ${data.paymentTerms}`, rightX, clientY);
-    clientY += 4;
+    const splitTerms = doc.splitTextToSize(`Payment Terms: ${data.paymentTerms}`, colWidth);
+    doc.text(splitTerms, rightX, clientY);
+    clientY += splitTerms.length * 3.8 + 0.5;
   }
   if (data.dueDate) {
-    doc.text(`Due Date: ${data.dueDate}`, rightX, clientY);
-    clientY += 4;
+    const splitDue = doc.splitTextToSize(`Due Date: ${data.dueDate}`, colWidth);
+    doc.text(splitDue, rightX, clientY);
+    clientY += splitDue.length * 3.8 + 0.5;
   }
 
+  // Dynamic vertical position derived from tallest column + clearance
   currentY = Math.max(supplierY, clientY) + 6;
 
-  // 5. Line Items Table
+  // 5. Line Items Table (with bottom margin reservation for footer)
   const tableRows = (data.items || []).map((item, idx) => [
     String(idx + 1),
     item.description,
@@ -231,16 +271,16 @@ export function generateInvoicePdf(data: InvoicePdfData): jsPDF {
     startY: currentY,
     head: [["#", "Description of Work / Items", "Qty", "Unit Price", "Amount"]],
     body: tableRows,
-    margin: { left: margin, right: margin },
+    margin: { left: margin, right: margin, bottom: 28 }, // Leaves 28mm safe zone for footer
     theme: "striped",
     headStyles: {
       fillColor: [30, 41, 59], // slate-800
       textColor: [255, 255, 255],
-      fontSize: 8.5,
+      fontSize: 8,
       fontStyle: "bold",
     },
     bodyStyles: {
-      fontSize: 8.5,
+      fontSize: 8,
       textColor: [30, 41, 59],
     },
     columnStyles: {
@@ -251,26 +291,43 @@ export function generateInvoicePdf(data: InvoicePdfData): jsPDF {
       4: { cellWidth: 28, halign: "right" },
     },
     styles: {
-      cellPadding: 3.5,
+      cellPadding: 3,
       overflow: "linebreak",
+    },
+    willDrawPage: (hookData) => {
+      // Draw watermark on page 2+ before table content is drawn
+      if (isDraft && hookData.pageNumber > 1) {
+        drawDraftWatermark(doc, pageWidth, pageHeight);
+      }
     },
   });
 
-  // Position after table
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const lastTable = (doc as any).lastAutoTable;
-  currentY = lastTable ? lastTable.finalY + 8 : currentY + 40;
+  currentY = lastTable ? lastTable.finalY + 7 : currentY + 35;
 
-  // 6. Summary Totals Box (Right Aligned)
+  // 6. Summary Totals Box & Payment Details
   const totalsBoxWidth = 80;
   const totalsBoxX = pageWidth - margin - totalsBoxWidth;
+  const payBoxWidth = totalsBoxX - margin - 8;
 
-  doc.setFillColor(248, 250, 252);
-  doc.rect(totalsBoxX, currentY, totalsBoxWidth, 32, "F");
-  doc.setDrawColor(226, 232, 240);
-  doc.rect(totalsBoxX, currentY, totalsBoxWidth, 32, "S");
+  // Check if summary and payment details fit on current page; break page if needed
+  const requiredSummaryHeight = 38;
+  if (currentY + requiredSummaryHeight > pageHeight - 28) {
+    doc.addPage();
+    if (isDraft) {
+      drawDraftWatermark(doc, pageWidth, pageHeight);
+    }
+    currentY = margin + 8;
+  }
 
-  doc.setFontSize(8.5);
+  // --- Right: Summary Totals Box ---
+  doc.setFillColor(248, 250, 252); // slate-50
+  doc.rect(totalsBoxX, currentY, totalsBoxWidth, 34, "F");
+  doc.setDrawColor(226, 232, 240); // slate-200
+  doc.rect(totalsBoxX, currentY, totalsBoxWidth, 34, "S");
+
+  doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(71, 85, 105);
 
@@ -288,61 +345,78 @@ export function generateInvoicePdf(data: InvoicePdfData): jsPDF {
   );
 
   // VAT
-  doc.text(vatLabel, totalsBoxX + 4, currentY + 14);
+  doc.text(vatLabel, totalsBoxX + 4, currentY + 15);
   doc.text(
     formatCurrency(data.vatAmountCents, currency),
     pageWidth - margin - 4,
-    currentY + 14,
+    currentY + 15,
     { align: "right" }
   );
 
   // Divider
   doc.setDrawColor(203, 213, 225);
-  doc.line(totalsBoxX + 4, currentY + 18, pageWidth - margin - 4, currentY + 18);
+  doc.line(totalsBoxX + 4, currentY + 20, pageWidth - margin - 4, currentY + 20);
 
   // Total
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(10.5);
+  doc.setFontSize(10);
   doc.setTextColor(15, 23, 42);
-  doc.text("TOTAL DUE:", totalsBoxX + 4, currentY + 25);
+  doc.text("TOTAL DUE:", totalsBoxX + 4, currentY + 28);
   doc.text(
     formatCurrency(data.totalCents, currency),
     pageWidth - margin - 4,
-    currentY + 25,
+    currentY + 28,
     { align: "right" }
   );
 
-  // 7. Payment Details (Left Box)
+  // --- Left: Payment Details ---
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(15, 23, 42);
-  doc.text("PAYMENT DETAILS & BANK TRANSFER", margin, currentY + 4);
+  doc.text("PAYMENT DETAILS & BANK TRANSFER", margin, currentY + 5);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(71, 85, 105);
-  let bankY = currentY + 9;
+  let bankY = currentY + 10;
+
   if (data.supplierBankName) {
-    doc.text(`Bank: ${data.supplierBankName}`, margin, bankY);
-    bankY += 4;
+    const splitBank = doc.splitTextToSize(`Bank: ${data.supplierBankName}`, payBoxWidth);
+    doc.text(splitBank, margin, bankY);
+    bankY += splitBank.length * 3.6;
   }
   if (data.supplierIban) {
-    doc.text(`IBAN: ${data.supplierIban}`, margin, bankY);
-    bankY += 4;
+    const splitIban = doc.splitTextToSize(`IBAN: ${data.supplierIban}`, payBoxWidth);
+    doc.text(splitIban, margin, bankY);
+    bankY += splitIban.length * 3.6;
   }
   if (data.supplierBic) {
-    doc.text(`BIC / SWIFT: ${data.supplierBic}`, margin, bankY);
-    bankY += 4;
+    const splitBic = doc.splitTextToSize(`BIC / SWIFT: ${data.supplierBic}`, payBoxWidth);
+    doc.text(splitBic, margin, bankY);
+    bankY += splitBic.length * 3.6;
   }
   if (data.paymentTerms) {
-    doc.text(`Terms: ${data.paymentTerms}`, margin, bankY);
-    bankY += 4;
+    const splitTerms = doc.splitTextToSize(`Payment Terms: ${data.paymentTerms}`, payBoxWidth);
+    doc.text(splitTerms, margin, bankY);
+    bankY += splitTerms.length * 3.6;
   }
 
-  currentY = Math.max(currentY + 36, bankY + 4);
+  currentY = Math.max(currentY + 38, bankY + 4);
 
-  // 8. Notes & Description of Work
+  // 7. Notes & Description of Work (Cleanly placed with multi-page handling)
   if (data.notes || data.descriptionOfWork) {
+    const notesText = [data.descriptionOfWork, data.notes].filter(Boolean).join(" — ");
+    const splitNotes = doc.splitTextToSize(notesText, contentWidth);
+    const requiredNotesHeight = splitNotes.length * 3.5 + 8;
+
+    if (currentY + requiredNotesHeight > pageHeight - 28) {
+      doc.addPage();
+      if (isDraft) {
+        drawDraftWatermark(doc, pageWidth, pageHeight);
+      }
+      currentY = margin + 8;
+    }
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
     doc.setTextColor(71, 85, 105);
@@ -352,41 +426,57 @@ export function generateInvoicePdf(data: InvoicePdfData): jsPDF {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139);
-    const notesText = [data.descriptionOfWork, data.notes].filter(Boolean).join(" — ");
-    const splitNotes = doc.splitTextToSize(notesText, pageWidth - margin * 2);
     doc.text(splitNotes, margin, currentY);
-    currentY += splitNotes.length * 3.5;
+    currentY += splitNotes.length * 3.5 + 4;
   }
 
-  // 9. Document Integrity Footer
-  const footerY = pageHeight - margin + 6;
-  doc.setDrawColor(226, 232, 240);
-  doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
+  // 8. Document Integrity Footer (Rendered across ALL pages with two distinct, non-overlapping rows)
+  const totalPages = doc.getNumberOfPages();
+  for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+    doc.setPage(pageNum);
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  doc.setTextColor(148, 163, 184);
+    const footerDividerY = pageHeight - margin - 5; // e.g. 297 - 18 - 5 = 274mm
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.35);
+    doc.line(margin, footerDividerY, pageWidth - margin, footerDividerY);
 
-  if (data.status === "issued" && data.integrityHash) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+
+    // Row 1: Legal / Audit Status (Left) & Page Counter (Right)
+    const row1Y = footerDividerY + 4;
+    if (data.status === "issued" && data.integrityHash) {
+      doc.text(
+        `ISSUED RECORD • SHA-256 AUDIT DIGEST: ${data.integrityHash}`,
+        margin,
+        row1Y
+      );
+    } else {
+      doc.text(
+        "DRAFT RECORD • Unissued working document. Official numbers and certified values assigned upon issuance.",
+        margin,
+        row1Y
+      );
+    }
+    doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, row1Y, {
+      align: "right",
+    });
+
+    // Row 2: Prototype Branding & Commercial Notice (Vertically distinct, exactly 4mm lower)
+    const row2Y = footerDividerY + 8;
     doc.text(
-      `ISSUED RECORD — SHA-256 AUDIT DIGEST: ${data.integrityHash}`,
+      "Matos VoiceDocs • Mobile Voice-to-Invoice System (Matos Systems)",
       margin,
-      footerY
+      row2Y
     );
-  } else {
     doc.text(
-      "DRAFT RECORD — Unissued working document. Certified values assigned upon formal issuance.",
-      margin,
-      footerY
+      "Demonstration Prototype • Not Certified as a Fiscal Cash Register",
+      pageWidth - margin,
+      row2Y,
+      { align: "right" }
     );
   }
-
-  doc.text(
-    "Matos VoiceDocs • Drafting Prototype (Not a Fiscal Cash Register)",
-    pageWidth - margin,
-    footerY,
-    { align: "right" }
-  );
 
   return doc;
 }

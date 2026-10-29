@@ -90,8 +90,8 @@ test.describe("Matos VoiceDocs End-to-End Workflow", () => {
     await expect(page.getByText("Step 2: AI Review & Deterministic Calculation")).toBeVisible({ timeout: 10000 });
     
     // Check that subtotal net is €100.00, VAT is €18.00, and total is €118.00
-    await expect(page.getByText("€100.00")).toBeVisible();
-    await expect(page.getByText("€18.00")).toBeVisible();
+    await expect(page.getByText("€100.00").first()).toBeVisible();
+    await expect(page.getByText("€18.00").first()).toBeVisible();
     await expect(page.getByText("€118.00").first()).toBeVisible();
   });
 });
