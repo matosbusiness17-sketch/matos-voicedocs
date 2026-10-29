@@ -9,7 +9,7 @@ import {
   Lock,
   FileCheck,
 } from "lucide-react";
-import { formatCurrency } from "@/lib/calculations";
+import { calculateInvoiceTotals, formatCurrency } from "@/lib/calculations";
 import { generateInvoicePdf, InvoicePdfData } from "@/lib/pdfGenerator";
 import { deriveDueDate, isDemoSupplierData } from "@/lib/issuanceValidation";
 import { InvoiceFormData } from "./InvoiceEditor";
@@ -49,22 +49,12 @@ export function InvoicePreview({
     };
   });
 
-  const subtotalCents = itemsForPdf.reduce((sum, it) => sum + it.totalCents, 0);
-  const vatRate = invoiceData.isVatRegistered ? invoiceData.vatRatePercent : 0;
-  let netCents = subtotalCents;
-  let vatAmountCents = 0;
-  let totalCents = subtotalCents;
-
-  if (invoiceData.isVatRegistered && vatRate > 0) {
-    if (invoiceData.isVatInclusive) {
-      netCents = Math.round(subtotalCents / (1 + vatRate / 100));
-      vatAmountCents = subtotalCents - netCents;
-      totalCents = subtotalCents;
-    } else {
-      vatAmountCents = Math.round(subtotalCents * (vatRate / 100));
-      totalCents = subtotalCents + vatAmountCents;
-    }
-  }
+  const vatRate = parseFloat(String(invoiceData.vatRatePercent)) || 0;
+  const totals = calculateInvoiceTotals(itemsForPdf, {
+    isVatRegistered: invoiceData.isVatRegistered,
+    vatRatePercent: vatRate,
+    isVatInclusive: invoiceData.isVatInclusive,
+  });
 
   const todayStr = invoiceData.serviceDate || "2026-10-28";
   const derivedDueDate = deriveDueDate(todayStr, invoiceData.paymentTerms);
@@ -88,7 +78,7 @@ export function InvoicePreview({
     paymentTerms: invoiceData.paymentTerms,
     currency: invoiceData.currency,
     isVatRegistered: invoiceData.isVatRegistered,
-    vatRatePercent: invoiceData.vatRatePercent,
+    vatRatePercent: vatRate,
     isVatInclusive: invoiceData.isVatInclusive,
     supplierName: invoiceData.supplierName,
     supplierAddress: invoiceData.supplierAddress,
@@ -104,9 +94,9 @@ export function InvoicePreview({
     clientPhone: invoiceData.clientPhone,
     descriptionOfWork: invoiceData.descriptionOfWork,
     notes: invoiceData.notes,
-    subtotalCents: netCents,
-    vatAmountCents,
-    totalCents,
+    subtotalCents: totals.subtotalCents,
+    vatAmountCents: totals.vatAmountCents,
+    totalCents: totals.totalCents,
     integrityHash: integrityHash || null,
     isDemoSupplier,
     items: itemsForPdf,
@@ -350,21 +340,21 @@ export function InvoicePreview({
             <div className="flex justify-between text-slate-600">
               <span>Subtotal (Net):</span>
               <span className="font-mono font-medium">
-                {formatCurrency(netCents, invoiceData.currency)}
+                {formatCurrency(totals.subtotalCents, invoiceData.currency)}
               </span>
             </div>
             <div className="flex justify-between text-slate-600">
               <span>
-                VAT ({invoiceData.isVatRegistered ? `${invoiceData.vatRatePercent}%` : "0%"}):
+                VAT ({invoiceData.isVatRegistered ? `${vatRate}%` : "0%"}):
               </span>
               <span className="font-mono font-medium">
-                {formatCurrency(vatAmountCents, invoiceData.currency)}
+                {formatCurrency(totals.vatAmountCents, invoiceData.currency)}
               </span>
             </div>
             <div className="pt-2 border-t border-slate-200 flex justify-between font-extrabold text-sm text-slate-900">
               <span>Total Due:</span>
               <span className="font-mono text-base">
-                {formatCurrency(totalCents, invoiceData.currency)}
+                {formatCurrency(totals.totalCents, invoiceData.currency)}
               </span>
             </div>
           </div>

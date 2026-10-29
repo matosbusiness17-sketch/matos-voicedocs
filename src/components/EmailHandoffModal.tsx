@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
-import { Mail, Copy, Check, ExternalLink, X, AlertCircle, FileText } from "lucide-react";
-import { formatCurrency, CurrencyCode } from "@/lib/calculations";
+import { Mail, Copy, Check, ExternalLink, X, AlertCircle } from "lucide-react";
+import { formatCurrency } from "@/lib/calculations";
+import { deriveDueDate } from "@/lib/issuanceValidation";
 import { InvoiceFormData } from "./InvoiceEditor";
 
 interface EmailHandoffModalProps {
@@ -28,6 +29,13 @@ export function EmailHandoffModal({
   const formattedTotal = formatCurrency(totalCents, invoiceData.currency);
   const subject = `Invoice ${invoiceNum} from ${invoiceData.supplierName}`;
 
+  // Deterministically derive due date if valid terms exist, otherwise preserve explicit or unknown state
+  const issueDateStr = invoiceData.serviceDate || new Date().toISOString().split("T")[0];
+  const derivedDate = deriveDueDate(issueDateStr, invoiceData.paymentTerms);
+  const resolvedDueDate = invoiceData.dueDate && invoiceData.dueDate.trim() !== ""
+    ? invoiceData.dueDate.trim()
+    : derivedDate;
+
   const body = `Dear ${invoiceData.clientName || "Customer"},
 
 Please find attached invoice ${invoiceNum} for ${formattedTotal} regarding completed services.
@@ -35,8 +43,8 @@ Please find attached invoice ${invoiceNum} for ${formattedTotal} regarding compl
 Summary of Work:
 ${invoiceData.descriptionOfWork || "Completed services as agreed."}
 
-Payment Terms: ${invoiceData.paymentTerms || "14 days"}
-Due Date: ${invoiceData.dueDate || "As specified in invoice"}
+Payment Terms: ${invoiceData.paymentTerms || "Not specified"}
+Due Date: ${resolvedDueDate || "Not specified"}
 
 Bank Payment Details:
 Bank: ${invoiceData.supplierBankName || "Bank of Valletta"}

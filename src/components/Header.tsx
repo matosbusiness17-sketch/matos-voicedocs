@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Mic, FileText, CheckCircle2, History, Shield, Sparkles } from "lucide-react";
+import { Mic, FileText, CheckCircle2, History, Shield } from "lucide-react";
 
 interface HeaderProps {
   currentStep: "record" | "edit" | "preview";

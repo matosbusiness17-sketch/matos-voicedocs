@@ -94,4 +94,103 @@ test.describe("Matos VoiceDocs End-to-End Workflow", () => {
     await expect(page.getByText("€18.00").first()).toBeVisible();
     await expect(page.getByText("€118.00").first()).toBeVisible();
   });
+
+  test("Critical VAT persistence: €80 + €20 line items, Malta 18% VAT exclusive, discrepancy resolution, PDF preview & issuance", async ({ page }) => {
+    // 1. Visit application and enter text fallback
+    await page.goto("/");
+    await page.getByRole("button", { name: "Text Fallback" }).click();
+    await page.locator("textarea").fill("Invoice for Wayne Enterprises at 100 Gotham Boulevard, Suite 400. Labor is €80 and materials is €20. The total is €100. Payment terms 14 days.");
+    await page.getByRole("button", { name: /Extract Invoice Details/i }).click();
+
+    // 2. Wait for Review & Edit step
+    await expect(page.getByText("Step 2: AI Review & Deterministic Calculation")).toBeVisible({ timeout: 15000 });
+
+    // Enable VAT Registered Business checkbox if unchecked
+    const vatCheckbox = page.getByRole("checkbox", { name: /VAT Registered Business/i });
+    if (!(await vatCheckbox.isChecked())) {
+      await vatCheckbox.check();
+    }
+
+    // Set VAT rate to Malta 18%
+    const vatSelect = page.locator("select").filter({ hasText: /Malta Standard/i });
+    await vatSelect.selectOption("18");
+
+    // Select VAT Exclusive pricing
+    const pricingSelect = page.locator("select").filter({ hasText: /VAT Exclusive/i });
+    await pricingSelect.selectOption("exclusive");
+
+    // Ensure line items are €80 and €20
+    const priceInputs = page.locator('input[type="number"][step="0.01"]');
+    if (await priceInputs.count() >= 2) {
+      await priceInputs.nth(0).fill("80.00");
+      await priceInputs.nth(1).fill("20.00");
+    }
+
+    // Ensure client details
+    const clientNameInput = page.getByPlaceholder(/Wayne Enterprises/i).first();
+    await clientNameInput.fill("Wayne Enterprises");
+    const clientAddrInput = page.getByPlaceholder(/100 Gotham Boulevard/i);
+    await clientAddrInput.fill("100 Gotham Boulevard, Suite 400");
+
+    // Editor shows Subtotal: €100.00, VAT: €18.00, Total: €118.00
+    await expect(page.getByText("€100.00").first()).toBeVisible();
+    await expect(page.getByText("€18.00").first()).toBeVisible();
+    await expect(page.getByText("€118.00").first()).toBeVisible();
+
+    // Resolve spoken discrepancy by accepting calculated total (€118.00)
+    const resolveBtn = page.getByRole("button", { name: /Accept Calculated Total/i });
+    if (await resolveBtn.isVisible()) {
+      await resolveBtn.click();
+      await expect(page.getByText("Spoken Total Discrepancy Detected")).not.toBeVisible();
+    }
+
+    // 3. Click Preview PDF & Issue
+    const previewBtn = page.getByRole("button", { name: /Preview PDF & Issue/i });
+    await previewBtn.click();
+
+    // Verify Step 3: Branded PDF & Document Snapshot
+    await expect(page.getByText("Step 3: Branded PDF & Document Snapshot")).toBeVisible();
+
+    // Verify that PDF preview shows Subtotal €100.00, VAT €18.00, Total €118.00 (NOT reverted to €0 VAT!)
+    await expect(page.getByText("Subtotal (Net):")).toBeVisible();
+    await expect(page.getByText("VAT (18%):")).toBeVisible();
+    await expect(page.getByText("€18.00")).toBeVisible();
+    await expect(page.getByText("€118.00").first()).toBeVisible();
+
+    // 4. Test PDF download trigger button is interactive
+    const downloadBtn = page.getByRole("button", { name: "Download PDF" });
+    await expect(downloadBtn).toBeVisible();
+    await downloadBtn.click();
+
+    // 5. Navigate Back to Editor
+    await page.getByRole("button", { name: /Back to Editor/i }).click();
+    await expect(page.getByText("Step 2: AI Review & Deterministic Calculation")).toBeVisible();
+
+    // Verify financial values remain unchanged after navigating back
+    await expect(page.getByText("€100.00").first()).toBeVisible();
+    await expect(page.getByText("€18.00").first()).toBeVisible();
+    await expect(page.getByText("€118.00").first()).toBeVisible();
+    // Verify discrepancy remains resolved
+    await expect(page.getByText("Spoken Total Discrepancy Detected")).not.toBeVisible();
+
+    // 6. Navigate forward to Preview again
+    await page.getByRole("button", { name: /Preview PDF & Issue/i }).click();
+    await expect(page.getByText("Step 3: Branded PDF & Document Snapshot")).toBeVisible();
+    await expect(page.getByText("€18.00")).toBeVisible();
+    await expect(page.getByText("€118.00").first()).toBeVisible();
+
+    // 7. Issue official invoice
+    await page.getByRole("button", { name: /Issue Official Invoice/i }).click();
+    await expect(page.getByRole("heading", { name: "Issue Official Invoice" })).toBeVisible();
+    await expect(page.getByText("€118.00").first()).toBeVisible();
+
+    // Confirm demo supplier and submit
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: /Confirm & Issue Official Invoice/i }).click();
+
+    // Verify issued snapshot contains €118.00
+    await expect(page.getByText("Officially Issued")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Snapshot Verified & Recorded")).toBeVisible();
+    await expect(page.getByText("€118.00").first()).toBeVisible();
+  });
 });

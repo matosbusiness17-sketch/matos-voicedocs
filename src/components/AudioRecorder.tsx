@@ -1,16 +1,12 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Mic,
   Square,
-  Play,
-  Pause,
   Upload,
-  FileAudio,
   Sparkles,
   AlertCircle,
-  CheckCircle2,
   Edit3,
   RefreshCw,
   Volume2,
@@ -64,7 +60,6 @@ export function AudioRecorder({ onTranscriptReady, isProcessing }: AudioRecorder
   
   // Audio recording states
   const [isRecording, setIsRecording] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [micPermission, setMicPermission] = useState<"prompt" | "granted" | "denied">("prompt");
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -195,7 +190,6 @@ export function AudioRecorder({ onTranscriptReady, isProcessing }: AudioRecorder
       mediaRecorderRef.current = mediaRecorder;
       mediaRecorder.start(250); // Collect data chunks every 250ms
       setIsRecording(true);
-      setIsPaused(false);
       setRecordingDuration(0);
 
       // Start timer
@@ -219,7 +213,6 @@ export function AudioRecorder({ onTranscriptReady, isProcessing }: AudioRecorder
       clearInterval(timerIntervalRef.current);
     }
     setIsRecording(false);
-    setIsPaused(false);
   };
 
   // Submit audio file or blob to /api/transcribe

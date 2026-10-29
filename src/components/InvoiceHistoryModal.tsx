@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   History,
   X,
@@ -77,7 +77,7 @@ export function InvoiceHistoryModal({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const fetchInvoices = async () => {
+  const fetchInvoices = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
@@ -95,13 +95,13 @@ export function InvoiceHistoryModal({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [onRefreshCount]);
 
   useEffect(() => {
     if (isOpen) {
       fetchInvoices();
     }
-  }, [isOpen]);
+  }, [isOpen, fetchInvoices]);
 
   const handleDeleteDraft = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();

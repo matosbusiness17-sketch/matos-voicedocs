@@ -42,3 +42,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# scratch & temporary files
+/scratch/
+*.webm
+*.wav
+*.mp3
+*.ogg
+*.m4a
+

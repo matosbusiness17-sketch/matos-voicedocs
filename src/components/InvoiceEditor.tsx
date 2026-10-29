@@ -6,7 +6,6 @@ import {
   Trash2,
   AlertTriangle,
   CheckCircle2,
-  HelpCircle,
   Building,
   User,
   CreditCard,
@@ -73,7 +72,7 @@ export interface InvoiceFormData {
 
 interface InvoiceEditorProps {
   initialData: InvoiceFormData;
-  onSaveDraft: (data: InvoiceFormData) => Promise<void>;
+  onSaveDraft: (data: InvoiceFormData) => Promise<InvoiceFormData | void>;
   onProceedToPreview: (data: InvoiceFormData) => void;
   isSaving: boolean;
 }
@@ -87,9 +86,19 @@ export function InvoiceEditor({
   const [formData, setFormData] = useState<InvoiceFormData>(initialData);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
 
-  // Sync when initialData changes
+  // Sync when initialData changes, preserving active form edits if only acquiring assigned draft ID
   useEffect(() => {
-    setFormData(initialData);
+    setFormData((prev) => {
+      if (!prev.id && initialData.id && prev.clientName === initialData.clientName) {
+        return {
+          ...prev,
+          id: initialData.id,
+          invoiceNumber: initialData.invoiceNumber,
+          status: initialData.status,
+        };
+      }
+      return initialData;
+    });
   }, [initialData]);
 
   // Deterministically compute totals on every change
@@ -103,9 +112,11 @@ export function InvoiceEditor({
     };
   });
 
+  const parsedVatRate = parseFloat(String(formData.vatRatePercent)) || 0;
+
   const totals = calculateInvoiceTotals(itemsForCalc, {
     isVatRegistered: formData.isVatRegistered,
-    vatRatePercent: formData.vatRatePercent,
+    vatRatePercent: parsedVatRate,
     isVatInclusive: formData.isVatInclusive,
   });
 
@@ -143,7 +154,7 @@ export function InvoiceEditor({
     paymentTerms: formData.paymentTerms,
     currency: formData.currency,
     isVatRegistered: formData.isVatRegistered,
-    vatRatePercent: formData.vatRatePercent,
+    vatRatePercent: parsedVatRate,
     isVatInclusive: formData.isVatInclusive,
     spokenTotalCents: formData.spokenTotalCents,
     items: itemsForCalc,

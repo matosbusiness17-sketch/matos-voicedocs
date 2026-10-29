@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { invoices, invoiceItems } from "@/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { calculateInvoiceTotals, checkSpokenDiscrepancy } from "@/lib/calculations";
 import { z } from "zod";
 
@@ -23,7 +23,7 @@ const CreateInvoiceSchema = z.object({
   currency: z.enum(["EUR", "GBP"]).default("EUR"),
   
   isVatRegistered: z.boolean().default(true),
-  vatRatePercent: z.number().default(18),
+  vatRatePercent: z.coerce.number().default(18),
   isVatInclusive: z.boolean().default(false),
   vatExemptReason: z.string().optional().nullable(),
 

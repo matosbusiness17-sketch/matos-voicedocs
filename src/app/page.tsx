@@ -226,15 +226,18 @@ export default function VoiceDocsPage() {
         throw new Error(resData.error || "Failed to save invoice.");
       }
 
-      setInvoiceData((prev) => ({
-        ...prev,
+      const mergedData: InvoiceFormData = {
+        ...updatedData,
         id: resData.invoice.id,
         invoiceNumber: resData.invoice.invoiceNumber,
         status: resData.invoice.status,
-      }));
+      };
+
+      setInvoiceData(mergedData);
 
       // Update count
       setSavedCount((prev) => (updatedData.id ? prev : prev + 1));
+      return mergedData;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setGeneralError(`Failed to save draft: ${msg}`);
@@ -246,33 +249,40 @@ export default function VoiceDocsPage() {
 
   // Proceed to Preview Step
   const handleProceedToPreview = async (updatedData: InvoiceFormData) => {
-    setInvoiceData(updatedData);
-    // Persist draft if not saved or on update
+    // Persist draft and guarantee page state preserves full user edits
     try {
       await handleSaveDraft(updatedData);
     } catch {
-      // Allow proceeding even if db temporarily offline
+      // Allow proceeding even if db temporarily offline, keeping updated data
+      setInvoiceData(updatedData);
     }
     setCurrentStep("preview");
   };
 
   // Issue Official Invoice
   const handleConfirmIssue = async (confirmDemoSupplier: boolean = false) => {
-    if (!invoiceData.id) {
+    let targetInvoiceId = invoiceData.id;
+    if (!targetInvoiceId) {
       // Must save first to acquire DB record id
       try {
-        await handleSaveDraft(invoiceData);
-      } catch (err) {
+        const saved = await handleSaveDraft(invoiceData);
+        targetInvoiceId = saved?.id || invoiceData.id;
+      } catch {
         setGeneralError("Please save the draft invoice to database before issuing.");
         return;
       }
+    }
+
+    if (!targetInvoiceId) {
+      setGeneralError("Invoice ID missing before issuing.");
+      return;
     }
 
     try {
       setIsIssuing(true);
       setGeneralError(null);
 
-      const res = await fetch(`/api/invoices/${invoiceData.id}/issue`, {
+      const res = await fetch(`/api/invoices/${targetInvoiceId}/issue`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -325,7 +335,7 @@ export default function VoiceDocsPage() {
     })),
     {
       isVatRegistered: invoiceData.isVatRegistered,
-      vatRatePercent: invoiceData.vatRatePercent,
+      vatRatePercent: parseFloat(String(invoiceData.vatRatePercent)) || 0,
       isVatInclusive: invoiceData.isVatInclusive,
     }
   );

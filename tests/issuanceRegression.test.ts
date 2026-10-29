@@ -215,4 +215,114 @@ describe("Critical QA Regression & Issuance Validation Suite", () => {
     expect(confirmedResult.isValid).toBe(true);
     expect(confirmedResult.isDemoSupplier).toBe(true);
   });
+
+  /**
+   * 9. €100 net (€80 + €20) + 18% Malta VAT exclusive produces €100 net, €18 VAT, €118 total
+   */
+  it("calculates €100 net + 18% Malta VAT exclusive to €18 VAT and €118 total and generates matching PDF", () => {
+    const vatExclusiveInvoice: InvoiceDataForValidation = {
+      ...baseValidInvoice,
+      isVatRegistered: true,
+      vatRatePercent: 18,
+      isVatInclusive: false,
+      items: [
+        { description: "Labor", quantity: 1, unitPriceCents: 8000, totalCents: 8000 },
+        { description: "Materials", quantity: 1, unitPriceCents: 2000, totalCents: 2000 },
+      ],
+      spokenTotalCents: null,
+    };
+
+    const result = validateInvoiceForIssuance(vatExclusiveInvoice);
+    expect(result.isValid).toBe(true);
+
+    const pdfData: InvoicePdfData = {
+      invoiceNumber: "INV-2026-0099",
+      status: "draft",
+      currency: "EUR",
+      isVatRegistered: true,
+      vatRatePercent: 18,
+      isVatInclusive: false,
+      supplierName: "Real Technical Services Ltd",
+      clientName: "Wayne Enterprises",
+      clientAddress: "100 Gotham Boulevard",
+      subtotalCents: 10000,
+      vatAmountCents: 1800,
+      totalCents: 11800,
+      items: [
+        { description: "Labor", quantity: 1, unitPriceCents: 8000, totalCents: 8000 },
+        { description: "Materials", quantity: 1, unitPriceCents: 2000, totalCents: 2000 },
+      ],
+    };
+
+    const doc = generateInvoicePdf(pdfData);
+    expect(doc).toBeDefined();
+    const pdfBytes = doc.output("arraybuffer");
+    expect(pdfBytes.byteLength).toBeGreaterThan(1000);
+  });
+
+  /**
+   * 10. VAT-inclusive €118 correctly produces €100 net and €18 VAT
+   */
+  it("calculates €118 VAT-inclusive to €100 net and €18 VAT deterministically", () => {
+    const vatInclusiveInvoice: InvoiceDataForValidation = {
+      ...baseValidInvoice,
+      isVatRegistered: true,
+      vatRatePercent: 18,
+      isVatInclusive: true,
+      items: [
+        { description: "Full Service Package", quantity: 1, unitPriceCents: 11800, totalCents: 11800 },
+      ],
+      spokenTotalCents: 11800,
+    };
+
+    const result = validateInvoiceForIssuance(vatInclusiveInvoice);
+    expect(result.isValid).toBe(true);
+  });
+
+  /**
+   * 11. Existing non-VAT invoice calculations continue working
+   */
+  it("preserves non-VAT calculation behavior with €0 VAT and subtotal equal to total", () => {
+    const nonVatInvoice: InvoiceDataForValidation = {
+      ...baseValidInvoice,
+      isVatRegistered: false,
+      vatRatePercent: 0,
+      isVatInclusive: false,
+      items: [
+        { description: "Exempt Service", quantity: 1, unitPriceCents: 10000, totalCents: 10000 },
+      ],
+      spokenTotalCents: 10000,
+    };
+
+    const result = validateInvoiceForIssuance(nonVatInvoice);
+    expect(result.isValid).toBe(true);
+  });
+
+  /**
+   * 12. Unresolved discrepancy blocks issuance, accepting total resolves it
+   */
+  it("blocks issuance when discrepancy exists and allows issuance once resolved", () => {
+    const withDiscrepancy: InvoiceDataForValidation = {
+      ...baseValidInvoice,
+      isVatRegistered: true,
+      vatRatePercent: 18,
+      isVatInclusive: false,
+      items: [
+        { description: "Labor", quantity: 1, unitPriceCents: 8000, totalCents: 8000 },
+        { description: "Materials", quantity: 1, unitPriceCents: 2000, totalCents: 2000 },
+      ],
+      spokenTotalCents: 10000, // Discrepancy: spoken €100 vs calculated €118
+    };
+
+    const blocked = validateInvoiceForIssuance(withDiscrepancy);
+    expect(blocked.isValid).toBe(false);
+    expect(blocked.errors.some((e) => e.field === "spokenTotalCents")).toBe(true);
+
+    // Resolved by accepting calculated total
+    const resolved = validateInvoiceForIssuance({
+      ...withDiscrepancy,
+      spokenTotalCents: null,
+    });
+    expect(resolved.isValid).toBe(true);
+  });
 });

@@ -4,6 +4,7 @@ import { invoices, invoiceItems, issuedSnapshots } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { computeSnapshotIntegrityHash } from "@/lib/integrity";
 import { validateInvoiceForIssuance } from "@/lib/issuanceValidation";
+import { calculateInvoiceTotals } from "@/lib/calculations";
 
 export async function POST(
   req: NextRequest,
@@ -43,6 +44,37 @@ export async function POST(
 
     const issueDateStr = new Date().toISOString().split("T")[0];
 
+    // Recalculate deterministic totals before official issuance (Requirement 5 & 6)
+    const numericVatRate = parseFloat(String(invoice.vatRatePercent)) || 0;
+    const recalculatedTotals = calculateInvoiceTotals(
+      invoice.items.map((it) => ({
+        description: it.description,
+        quantity: it.quantity,
+        unitPriceCents: it.unitPriceCents,
+      })),
+      {
+        isVatRegistered: invoice.isVatRegistered,
+        vatRatePercent: numericVatRate,
+        isVatInclusive: invoice.isVatInclusive,
+      }
+    );
+
+    // Consistency verification: reject issuance if totals or tax treatment are inconsistent
+    if (
+      invoice.subtotalCents !== recalculatedTotals.subtotalCents ||
+      invoice.vatAmountCents !== recalculatedTotals.vatAmountCents ||
+      invoice.totalCents !== recalculatedTotals.totalCents
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Issuance validation failed: Stored invoice financial totals are inconsistent with deterministic tax recalculation. Please review and re-save the draft before issuance.",
+        },
+        { status: 422 }
+      );
+    }
+
     // Centralized issuance validation (Requirement 1 & 2 & 3)
     const validation = validateInvoiceForIssuance({
       clientName: invoice.clientName,
@@ -63,7 +95,7 @@ export async function POST(
       paymentTerms: invoice.paymentTerms,
       currency: invoice.currency,
       isVatRegistered: invoice.isVatRegistered,
-      vatRatePercent: invoice.vatRatePercent,
+      vatRatePercent: numericVatRate,
       isVatInclusive: invoice.isVatInclusive,
       spokenTotalCents: invoice.spokenTotalCents,
       items: invoice.items.map((it) => ({
@@ -105,7 +137,7 @@ export async function POST(
       ? invoice.dueDate.trim()
       : validation.derivedDueDate;
 
-    // Build complete frozen snapshot
+    // Build complete frozen snapshot using deterministically recalculated amounts
     const snapshotData = {
       id: invoice.id,
       invoiceNumber: assignedInvoiceNumber,
@@ -115,7 +147,7 @@ export async function POST(
       paymentTerms: invoice.paymentTerms,
       currency: invoice.currency,
       isVatRegistered: invoice.isVatRegistered,
-      vatRatePercent: invoice.vatRatePercent,
+      vatRatePercent: numericVatRate,
       isVatInclusive: invoice.isVatInclusive,
       vatExemptReason: invoice.vatExemptReason,
       supplier: {
@@ -142,9 +174,9 @@ export async function POST(
         unitPriceCents: it.unitPriceCents,
         totalCents: it.totalCents,
       })),
-      subtotalCents: invoice.subtotalCents,
-      vatAmountCents: invoice.vatAmountCents,
-      totalCents: invoice.totalCents,
+      subtotalCents: recalculatedTotals.subtotalCents,
+      vatAmountCents: recalculatedTotals.vatAmountCents,
+      totalCents: recalculatedTotals.totalCents,
       notes: invoice.notes,
       rawTranscript: invoice.rawTranscript,
       issuedAt: new Date().toISOString(),
@@ -174,6 +206,9 @@ export async function POST(
         invoiceNumber: assignedInvoiceNumber,
         issueDate: issueDateStr,
         dueDate: resolvedDueDate,
+        subtotalCents: recalculatedTotals.subtotalCents,
+        vatAmountCents: recalculatedTotals.vatAmountCents,
+        totalCents: recalculatedTotals.totalCents,
         integrityHash,
         issuedAt: new Date(),
         updatedAt: new Date(),

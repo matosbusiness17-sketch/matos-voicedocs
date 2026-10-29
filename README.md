@@ -47,13 +47,30 @@ graph TD
 - **Validation**: Zod 3 schemas
 - **PDF Generation**: `jspdf` & `jspdf-autotable`
 - **Unit & Integration Testing**: Vitest 5
-- **End-to-End Browser Testing**: Playwright 1.64 across Desktop Chromium and Mobile Chrome
+- **Unit & Integration Testing**: Vitest 5 (30 automated tests)
+- **End-to-End Browser Testing**: Playwright 1.64 across Desktop Chromium and Mobile Chrome (6 automated tests)
+
+---
+
+## 📸 Portfolio Evidence & Visual Tour
+
+High-resolution visual evidence generated strictly using synthetic demonstration data:
+
+| Workflow Stage | Description | Asset Link |
+| :--- | :--- | :--- |
+| **1. Voice Input & Preset Picker** | Desktop/mobile mic recording, file upload, text fallback, and 5 instant benchmark scenarios | [`01_workflow_voice_input.png`](file:///c:/Users/Admin/OneDrive/Documents/Coding/matos-voicedocs/docs/evidence/01_workflow_voice_input.png) |
+| **2. Spoken Discrepancy Safeguard** | Discrepancy detection engine flagging arithmetic differences and disabling issuance | [`02_spoken_discrepancy_safeguard.png`](file:///c:/Users/Admin/OneDrive/Documents/Coding/matos-voicedocs/docs/evidence/02_spoken_discrepancy_safeguard.png) |
+| **3. Financial Review & VAT Engine** | Line items editor, Malta 18% standard VAT, UK 20%, inclusive/exclusive modes, and integer minor-unit math | [`03_invoice_editor_vat_calculation.png`](file:///c:/Users/Admin/OneDrive/Documents/Coding/matos-voicedocs/docs/evidence/03_invoice_editor_vat_calculation.png) |
+| **4. Customer Email Handoff** | One-click `mailto:` generator with resolved due dates, payment details, and browser attachment guidance | [`04_customer_email_handoff.png`](file:///c:/Users/Admin/OneDrive/Documents/Coding/matos-voicedocs/docs/evidence/04_customer_email_handoff.png) |
+| **5. Issuance Safeguards Modal** | Centralized validation checks, client billing address requirement, and demo supplier confirmation | [`05_issuance_confirmation_safeguards.png`](file:///c:/Users/Admin/OneDrive/Documents/Coding/matos-voicedocs/docs/evidence/05_issuance_confirmation_safeguards.png) |
+| **6. Officially Issued & Locked State** | Sequential invoice numbering, immutable audit snapshot, and SHA-256 integrity digest display | [`06_issued_invoice_sha256_snapshot.png`](file:///c:/Users/Admin/OneDrive/Documents/Coding/matos-voicedocs/docs/evidence/06_issued_invoice_sha256_snapshot.png) |
+| **7. Branded Vector PDF Output** | Publication-grade PDF with wrapped addresses, dynamic pagination, and watermark | [`07_sample_invoice_pdf.png`](file:///c:/Users/Admin/OneDrive/Documents/Coding/matos-voicedocs/docs/evidence/07_sample_invoice_pdf.png) • [`sample_issued_invoice.pdf`](file:///c:/Users/Admin/OneDrive/Documents/Coding/matos-voicedocs/docs/evidence/sample_issued_invoice.pdf) |
 
 ---
 
 ## 🧪 Verification of Mandatory Test Scenarios
 
-The suite includes 15 automated Vitest unit/integration tests and 4 Playwright end-to-end tests validating every required scenario:
+The test suite includes **30 automated Vitest unit/integration tests** and **6 Playwright end-to-end browser tests** verifying every functional requirement:
 
 | Test Scenario | Description | Expected Outcome | Verification Status |
 | :--- | :--- | :--- | :---: |
@@ -61,10 +78,14 @@ The suite includes 15 automated Vitest unit/integration tests and 4 Playwright e
 | **Test B — Spoken Discrepancy** | Line items £1,880, speaker claims £2,085 | Flags £205.00 difference, blocks issuance | ✅ **Verified** (`tests/calculations.test.ts`, `e2e/workflow.spec.ts`) |
 | **Test C — VAT Included** | 18% VAT-inclusive gross amount €118 | Net: €100.00, VAT: €18.00, Total: €118.00 | ✅ **Verified** (`tests/calculations.test.ts`, `e2e/workflow.spec.ts`) |
 | **Test D — Missing Information** | Recording without address or due date | Address & due date remain `null`, flagged in checklist | ✅ **Verified** (`tests/extraction.test.ts`) |
-| **Test E — Payment Terms** | "Payment due in 14 days" spoken | Retained as "14 days", not default 30 days | ✅ **Verified** (`tests/extraction.test.ts`) |
+| **Test E — Payment Terms** | "Payment due in 14 days" spoken | Retained as "14 days", not default 30 days; auto-derives due date | ✅ **Verified** (`tests/extraction.test.ts`, `tests/issuanceRegression.test.ts`) |
 | **Test F — Audio Privacy** | Audio uploaded for transcription | In-memory buffer only, zero disk retention | ✅ **Verified** (`tests/privacy.test.ts`) |
 | **Test G — Document Lifecycle** | Drafts vs Issued snapshots | Drafts editable; issued snapshots immutable with SHA-256 | ✅ **Verified** (`tests/lifecycle.test.ts`) |
 | **Test H — API Failure Resilience** | Missing or invalid API keys | Graceful fallback without fabricating success | ✅ **Verified** (`tests/extraction.test.ts`) |
+| **Critical QA — Mandatory Address** | Customer billing address missing | Blocks official issuance, permits draft preview/saving | ✅ **Verified** (`tests/issuanceRegression.test.ts`, `e2e/workflow.spec.ts`) |
+| **Critical QA — VAT Persistence** | Enable Malta 18% exclusive (€80 + €20) | Persists €100 net + €18 VAT across save, preview, PDF, DB | ✅ **Verified** (`tests/issuanceRegression.test.ts`, `e2e/workflow.spec.ts`) |
+| **Critical QA — Server Recalculation** | Server-side issuance verification | Recomputes totals deterministically; rejects 422 if inconsistent | ✅ **Verified** (`tests/issuanceRegression.test.ts`, `/api/invoices/[id]/issue`) |
+| **Critical QA — Email Due Date** | Due date handoff in email modal | Renders actual/derived date; preserves unknown dates without inventing | ✅ **Verified** (`src/components/EmailHandoffModal.tsx`) |
 
 ---
 
@@ -114,16 +135,26 @@ Open **[http://localhost:3008](http://localhost:3008)** in your browser.
 
 ---
 
-## 📊 Running Tests
+## 📊 Running Tests & Quality Checks
 
-### Unit & Integration Tests (Vitest)
+### Unit & Integration Tests (Vitest — 30 tests)
 ```bash
 npm test
 ```
 
-### End-to-End Browser Tests (Playwright)
+### End-to-End Browser Tests (Playwright — 6 tests across Desktop & Mobile)
 ```bash
 npm run test:e2e
+```
+
+### TypeScript Strict Typecheck
+```bash
+npx tsc --noEmit
+```
+
+### Code Style & Linting (ESLint)
+```bash
+npm run lint
 ```
 
 ### Production Build Validation
@@ -138,7 +169,7 @@ npm run build
 1. **In-Memory Audio Processing**: Uploaded and recorded voice notes are streamed in memory over HTTPS directly to Deepgram and immediately garbage-collected. No audio files are ever written to server disk or persistent storage.
 2. **Server-Side API Key Isolation**: Deepgram and OpenAI keys reside exclusively in server environment variables. Zero credentials are exposed to client bundles.
 3. **Immutable Audit Digest**: Issued invoices calculate a deterministic canonical SHA-256 hash. *Note: As documented, this provides change-detection and snapshot auditability, and does not purport to replace a qualified electronic signature under eIDAS regulations.*
-4. **Maltese Fiscal Receipt Limitation**: Matos VoiceDocs is an invoice-drafting and billing utility. It is not an officially certified fiscal receipt printer or certified tax compliance software under Malta VAT Department regulations. Businesses must ensure statutory reporting compliance.
+4. **Portfolio Prototype & Legal Status**: Matos VoiceDocs is an architectural portfolio prototype and invoice-drafting utility. It is **not** an officially certified fiscal receipt printer, cash register, or certified legal tax compliance software under Malta VAT Department regulations. Businesses must ensure statutory reporting compliance through certified accountants and fiscal systems.
 5. **Email Attachment Guidance**: Standard web browsers cannot automatically attach files to `mailto:` protocols. The application provides clear inline guidance instructing the user to download the PDF invoice and attach it to their prepared email draft.
 
 ---
